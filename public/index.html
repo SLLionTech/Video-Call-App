@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Call App</title>
+  <style>
+    body {
+      background-color: #1a1a1a;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+    }
+    .controls {
+      margin-bottom: 20px;
+      padding: 20px;
+      background: #333;
+      border-radius: 10px;
+    }
+    input {
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background-color: #0056b3; }
+    #video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, 300px);
+      gap: 10px;
+      width: 100%;
+      max-width: 1000px;
+    }
+    video {
+      width: 100%;
+      height: 250px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 2px solid #fff;
+    }
+  </style>
+  
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <h1>Replit Group Video Call</h1>
+  
+  <div class="controls">
+    <input type="text" id="room-input" placeholder="Enter Room ID (e.g. 100)">
+    <button onclick="joinRoom()">Join Call</button>
+  </div>
+
+  <div id="video-grid"></div>
+
+  <script>
+    const socket = io('/'); // Server එකට සම්බන්ධ වීම
+    const videoGrid = document.getElementById('video-grid');
+    
+    // Peer (Video) සම්බන්ධතාවය සැකසීම
+    const myPeer = new Peer(); 
+
+    const myVideo = document.createElement('video');
+    myVideo.muted = true; // තමන්ගේ සද්දේ තමන්ට ඇහෙන්නේ නැති වෙන්න
+    const peers = {};
+
+    // 1. කැමරාව සහ මයික් එක ලබා ගැනීම
+    navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    }).then(stream => {
+      addVideoStream(myVideo, stream);
+
+      // කවුරුහරි මට කෝල් කරාම (Answer)
+      myPeer.on('call', call => {
+        call.answer(stream);
+        const video = document.createElement('video');
+        call.on('stream', userVideoStream => {
+          addVideoStream(video, userVideoStream);
+        });
+      });
+
+      // අලුත් කෙනෙක් කාමරයට ආවම
+      socket.on('user-connected', userId => {
+        // පොඩි වෙලාවක් ඉන්නවා සම්බන්ධ වෙන්න
+        setTimeout(() => {
+            connectToNewUser(userId, stream);
+        }, 1000);
+      });
+    });
+
+    // කෙනෙක් අයින් වුනාම
+    socket.on('user-disconnected', userId => {
+      if (peers[userId]) peers[userId].close();
+    });
+
+    // මගේ ID එක Peer Server එකෙන් ලැබුනම
+    let myId = null;
+    myPeer.on('open', id => {
+      myId = id;
+    });
+
+    // Join Button එක එබූ විට
+    function joinRoom() {
+        const roomId = document.getElementById('room-input').value;
+        if (!roomId) return alert("Please enter a Room ID");
+        
+        socket.emit('join-room', roomId, myId);
+        document.querySelector('.controls').style.display = 'none';
+    }
+
+    // අලුත් කෙනෙක්ට කෝල් ගැනීම
+    function connectToNewUser(userId, stream) {
+      const call = myPeer.call(userId, stream);
+      const video = document.createElement('video');
+      call.on('stream', userVideoStream => {
+        addVideoStream(video, userVideoStream);
+      });
+      call.on('close', () => {
+        video.remove();
+      });
+
+      peers[userId] = call;
+    }
+
+    function addVideoStream(video, stream) {
+      video.srcObject = stream;
+      video.addEventListener('loadedmetadata', () => {
+        video.play();
+      });
+      videoGrid.append(video);
+    }
+  </script>
+</body>
+</html>
